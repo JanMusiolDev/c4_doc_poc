@@ -1,4 +1,10 @@
 specification {
+  element actor {
+    style { shape person; color gray }
+  }
+  element application {
+    style { color primary }
+  }
   element service {
     style { color indigo }
   }
@@ -26,67 +32,134 @@ specification {
 }
 
 model {
+  scannerNetwork = actor 'Parcel scanner network' {
+    description 'Publishes neutral parcel scan events for processing'
+  }
+
   kafka = messageBroker 'Kafka' {
     technology 'Apache Kafka'
 
-    inputTopic = queue 'Input topic' {
-      description 'Receives messages that need to be persisted'
+    inputTopic = queue 'Parcel events' {
+      description 'Receives parcel scan events that need to be processed'
       style { color green }
     }
 
-    outputTopic = queue 'Output topic' {
-      description 'Receives messages published by the ingestion service'
+    outputTopic = queue 'Normalized parcel events' {
+      description 'Receives normalized events published by the ingestion service'
       style { color gray }
     }
   }
 
-  ingestionService = service 'Ingestion service' {
-    description 'Consumes records from Kafka, persists them, and publishes results'
-  }
+  parcelPlatform = application 'Parcel event platform' {
+    description 'Processes parcel events and exposes their latest state'
 
-  downstreamService = service 'Downstream service' {
-    description 'Processes messages published by the ingestion service'
+    ingestionService = service 'Ingestion service' {
+      description 'Consumes parcel events, validates and persists them, and publishes normalized events'
 
-    consumer = component 'Output topic consumer' {
-      description 'Consumes and processes messages from the output topic'
+      consumer = component 'Kafka consumer' {
+        description 'Receives parcel events from the input topic'
+      }
+
+      validator = component 'Event validator' {
+        description 'Validates and normalizes parcel events'
+      }
+
+      persister = component 'Event persister' {
+        description 'Stores valid parcel events'
+      }
+
+      publisher = component 'Event publisher' {
+        description 'Publishes normalized parcel events'
+      }
+    }
+
+    queryApi = api 'Parcel query API' {
+      description 'Exposes endpoints for reading the latest parcel state'
+      technology 'REST API'
+    }
+
+    dataStore = database 'Parcel event database' {
+      description 'Stores parcel events processed by the ingestion service'
+      technology 'PostgreSQL'
     }
   }
 
-  dataStore = database 'Application database' {
-    description 'Stores records consumed by the ingestion service'
-    technology 'PostgreSQL'
+  downstreamService = service 'Downstream service' {
+    description 'Processes normalized parcel events published by the platform'
+
+    consumer = component 'Output topic consumer' {
+      description 'Consumes and processes normalized parcel events'
+    }
   }
 
-  API = api 'API'{
-    description 'Exposes endpoints for interacting with the application'
-    technology 'REST API'
-  }
-
-  API -> dataStore 'reads data persisted by ingestion service'
-  kafka.inputTopic -> ingestionService 'Delivers records'
-  ingestionService -> dataStore 'Persists records'
-  ingestionService -> kafka.outputTopic 'Publishes results'
-  kafka.outputTopic -> downstreamService.consumer 'Delivers published results'
+  scannerNetwork -> kafka.inputTopic 'Publishes parcel events'
+  kafka.inputTopic -> parcelPlatform.ingestionService.consumer 'Delivers parcel events'
+  parcelPlatform.ingestionService.consumer -> parcelPlatform.ingestionService.validator 'Forwards received event'
+  parcelPlatform.ingestionService.validator -> parcelPlatform.ingestionService.persister 'Sends valid event'
+  parcelPlatform.ingestionService.persister -> parcelPlatform.dataStore 'Persists event'
+  parcelPlatform.ingestionService.validator -> parcelPlatform.ingestionService.publisher 'Sends normalized event'
+  parcelPlatform.ingestionService.publisher -> kafka.outputTopic 'Publishes normalized event'
+  parcelPlatform.queryApi -> parcelPlatform.dataStore 'Reads parcel state'
+  kafka.outputTopic -> downstreamService.consumer 'Delivers normalized event'
 }
 
 views {
   view index {
-    title 'Simple architecture poc architecture'
-    include *
-    include kafka.*
-    exclude downstreamService
-    autoLayout LeftRight
-    rank same{
-      ingestionService,
-      dataStore,
-      API,
+    title 'Parcel event processing landscape'
+    include scannerNetwork
+    include kafka with {
+      navigateTo kafka-details
     }
+    include parcelPlatform with {
+      navigateTo parcel-application
+    }
+    autoLayout LeftRight
+  }
+
+  view parcel-application of parcelPlatform {
+    title 'Parcel event platform'
+    include *
+    include kafka with {
+      navigateTo kafka-details
+    }
+    include parcelPlatform.ingestionService with {
+      navigateTo ingestion-service
+    }
+    autoLayout LeftRight
+  }
+
+  view ingestion-service of parcelPlatform.ingestionService {
+    title 'Ingestion service internals'
+    include *
+    include kafka.inputTopic
+    include kafka.outputTopic
+    include parcelPlatform.dataStore
+    include parcelPlatform.ingestionService.consumer with {
+      navigateTo consumer-data-flow
+    }
+    autoLayout LeftRight
+  }
+
+  dynamic view consumer-data-flow {
+    title 'Parcel event consumer data flow'
+    variant sequence
+
+    kafka.inputTopic -> parcelPlatform.ingestionService.consumer 'Delivers parcel event'
+    parcelPlatform.ingestionService.consumer -> parcelPlatform.ingestionService.validator 'Forwards received event'
+    parcelPlatform.ingestionService.validator -> parcelPlatform.ingestionService.persister 'Sends valid event'
+    parcelPlatform.ingestionService.persister -> parcelPlatform.dataStore 'Persists event'
+    parcelPlatform.ingestionService.persister <- parcelPlatform.dataStore 'Confirms persistence'
+    parcelPlatform.ingestionService.validator -> parcelPlatform.ingestionService.publisher 'Sends normalized event'
+    parcelPlatform.ingestionService.publisher -> kafka.outputTopic 'Publishes normalized event'
   }
 
   view kafka-details of kafka {
     title 'Kafka topics and consumers'
     include *
-    include downstreamService
+    include parcelPlatform
+    include downstreamService with {
+      navigateTo downstream-service
+    }
     autoLayout LeftRight
   }
 
