@@ -1,17 +1,55 @@
- specification {
-  element service
-  element queue
-  element database
+specification {
+  element service {
+    style { color indigo }
+  }
+  element component {
+    style { color secondary }
+  }
+  element api{
+    style {
+      color sky
+      shape mobile
+    }
+  }
+  element messageBroker {
+    style { color amber }
+  }
+  element queue {
+    style { shape queue }
+  }
+  element database {
+    style { 
+      color green 
+      shape storage
+    }
+  }
 }
 
 model {
-  inputTopic = queue 'Input Kafka topic' {
-    description 'Receives records that need to be persisted'
+  kafka = messageBroker 'Kafka' {
     technology 'Apache Kafka'
+
+    inputTopic = queue 'Input topic' {
+      description 'Receives messages that need to be persisted'
+      style { color green }
+    }
+
+    outputTopic = queue 'Output topic' {
+      description 'Receives messages published by the ingestion service'
+      style { color gray }
+    }
   }
 
   ingestionService = service 'Ingestion service' {
-    description 'Consumes records from Kafka and persists them'
+    description 'Consumes records from Kafka, persists them, and publishes results'
+  }
+
+  downstreamService = service 'Downstream service' {
+    description 'Processes messages published by the ingestion service'
+
+    consumer = component 'Output topic consumer' {
+      description 'Consumes and processes messages from the output topic'
+    }
   }
 
   dataStore = database 'Application database' {
@@ -19,14 +57,43 @@ model {
     technology 'PostgreSQL'
   }
 
-  inputTopic -> ingestionService 'Delivers records'
+  API = api 'API'{
+    description 'Exposes endpoints for interacting with the application'
+    technology 'REST API'
+  }
+
+  API -> dataStore 'reads data persisted by ingestion service'
+  kafka.inputTopic -> ingestionService 'Delivers records'
   ingestionService -> dataStore 'Persists records'
+  ingestionService -> kafka.outputTopic 'Publishes results'
+  kafka.outputTopic -> downstreamService.consumer 'Delivers published results'
 }
 
 views {
   view index {
-    title 'Kafka ingestion architecture'
+    title 'Simple architecture poc architecture'
     include *
+    include kafka.*
+    exclude downstreamService
+    autoLayout LeftRight
+    rank same{
+      ingestionService,
+      dataStore,
+      API,
+    }
+  }
+
+  view kafka-details of kafka {
+    title 'Kafka topics and consumers'
+    include *
+    include downstreamService
+    autoLayout LeftRight
+  }
+
+  view downstream-service of downstreamService {
+    title 'Downstream service internals'
+    include *
+    include kafka.outputTopic
     autoLayout LeftRight
   }
 }
