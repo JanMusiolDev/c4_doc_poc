@@ -1,0 +1,32 @@
+ specification {
+  element service
+  element queue
+  element database
+}
+
+model {
+  inputTopic = queue 'Input Kafka topic' {
+    description 'Receives records that need to be persisted'
+    technology 'Apache Kafka'
+  }
+
+  ingestionService = service 'Ingestion service' {
+    description 'Consumes records from Kafka and persists them'
+  }
+
+  dataStore = database 'Application database' {
+    description 'Stores records consumed by the ingestion service'
+    technology 'PostgreSQL'
+  }
+
+  inputTopic -> ingestionService 'Delivers records'
+  ingestionService -> dataStore 'Persists records'
+}
+
+views {
+  view index {
+    title 'Kafka ingestion architecture'
+    include *
+    autoLayout LeftRight
+  }
+}

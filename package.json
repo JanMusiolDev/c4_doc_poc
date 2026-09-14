@@ -1,0 +1,14 @@
+{
+  "name": "c4-doc-poc",
+  "private": true,
+  "scripts": {
+    "validate": "likec4 validate .",
+    "build": "likec4 build --use-hash-history -o dist"
+  },
+  "devDependencies": {
+    "likec4": "1.59.3"
+  },
+  "engines": {
+    "node": ">=22.22.3"
+  }
+}
